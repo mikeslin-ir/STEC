@@ -3,6 +3,8 @@ import os
 import glob
 import math
 from typing import List, Optional
+import json
+from typing import Any, Dict
 
 import cv2
 import numpy as np
@@ -32,6 +34,16 @@ class FrameSampler_Kanta:
         os.makedirs(output_folder, exist_ok=True)
         self.cleanup_partial_output(output_folder)  # always start clean
 
+        # Reset last-run info for meta
+        self._last_meta: Dict[str, Any] = {
+            "sampler": "katna",
+            "index_mode": "rank",
+            "selected_frame_indices": [],
+            "selected_frame_indices_saved": [],
+            "records": [],
+            "fallback_used": None,
+        }
+
         # 1) Katna with fallback counts
         fallback_list = [self.no_of_frames, 10, 5, 1]
         katna_success = False
@@ -51,6 +63,19 @@ class FrameSampler_Kanta:
                 if num > 0:
                     print(f"[SUCCESS] Katna extracted {num} frames")
                     katna_success = True
+
+                    # Katna output files are renamed to rank order; true indices are not recoverable.
+                    self._last_meta.update({
+                        "index_mode": "rank",
+                        "fallback_used": "katna",
+                        "saved_count": int(num),
+                        "selected_frame_indices_saved": list(range(int(num))),
+                        "selected_frame_indices": list(range(int(num))),
+                        "records": [
+                            {"rank": int(i), "frame_index": None, "filename": f"frame_{i:06d}.jpg"}
+                            for i in range(int(num))
+                        ],
+                    })
                     break
                 else:
                     print("[WARNING] Katna returned 0 frames; retrying...")
@@ -74,10 +99,16 @@ class FrameSampler_Kanta:
                         f"All attempts failed (Katna + uniform) for: {source_video_path}"
                     )
                 print(f"[SUCCESS] Uniform sampling saved {saved} frames")
+
+                # uniform_sample_frames populates self._last_meta with approximate/true indices.
+                self._last_meta["fallback_used"] = "uniform"
             else:
                 raise RuntimeError(
                     f"Katna extraction failed and uniform fallback is disabled for: {source_video_path}"
                 )
+
+        # Always attempt to write meta.json for downstream consumers.
+        self._write_meta(output_folder)
 
     # --------------------------- Helpers ---------------------------
 
@@ -159,7 +190,20 @@ class FrameSampler_Kanta:
             duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / (fps + 1e-6)
             print(f"[WARNING] Unknown frame count (reported {total}). fps≈{fps:.2f}, duration≈{duration:.2f}s")
             # fall back to naive sequential read grabbing ~n frames
-            return self._uniform_by_stream(cap, output_folder, n)
+            ok, saved = self._uniform_by_stream(cap, output_folder, n)
+            # stream mode: we do not know original indices reliably; treat as approx rank.
+            self._last_meta.update({
+                "index_mode": "rank",
+                "total_frames": None,
+                "saved_count": int(saved),
+                "selected_frame_indices_saved": list(range(int(saved))),
+                "selected_frame_indices": list(range(int(saved))),
+                "records": [
+                    {"rank": int(i), "frame_index": None, "filename": f"frame_{i:06d}.jpg"}
+                    for i in range(int(saved))
+                ],
+            })
+            return ok, saved
 
         # Build monotonically increasing indices in [0, total-1]
         if n >= total:
@@ -168,6 +212,8 @@ class FrameSampler_Kanta:
             indices = np.linspace(0, total - 1, num=n, dtype=np.int64)
 
         saved = 0
+        saved_indices: List[int] = []
+        records: List[Dict[str, Any]] = []
         for i, idx in enumerate(indices.tolist()):
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
             ok, frame = cap.read()
@@ -183,10 +229,36 @@ class FrameSampler_Kanta:
             if not cv2.imwrite(out_name, frame):
                 print(f"[WARN] Failed to write {out_name}")
                 continue
+            saved_indices.append(int(idx))
+            records.append({
+                "rank": int(saved),
+                "frame_index": int(idx),
+                "filename": os.path.basename(out_name),
+            })
             saved += 1
 
         cap.release()
+
+        # Store meta for caller
+        self._last_meta.update({
+            "index_mode": "approx",  # OpenCV seek can fail; saved frames may be a subset.
+            "total_frames": int(total),
+            "saved_count": int(saved),
+            "selected_frame_indices": [int(x) for x in indices.tolist()],
+            "selected_frame_indices_saved": saved_indices,
+            "records": records,
+        })
         return (saved > 0), saved
+
+    def _write_meta(self, output_folder: str) -> None:
+        """Write output_folder/meta.json (best-effort)."""
+        meta = dict(self._last_meta) if hasattr(self, "_last_meta") else {}
+        meta.setdefault("sampler", "katna")
+        try:
+            with open(os.path.join(output_folder, "meta.json"), "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     def _seek_nearby(self, cap: cv2.VideoCapture, idx: int, total: int, window: int = 3):
         """Try a few frames around idx to recover a readable frame."""
