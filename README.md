@@ -119,7 +119,14 @@ This will create:
 ## Recommended citation
 
 If you use this code, please cite the STEC paper.
-
+```
+@article{Lin2026STEC,
+  title={STEC: A Reference-Free Spatio-Temporal Entropy Coverage Metric for Evaluating Sampled Video Frames},
+  author={Lin, Shih-Yao},
+  journal={arXiv preprint arXiv:2601.13974},
+  year={2026}
+}
+```
 ---
 
 ## License
