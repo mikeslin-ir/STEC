@@ -124,7 +124,6 @@ The paper is available as an arXiv preprint and will appear at the WACV 2026 Wor
 - **arXiv preprint:** https://arxiv.org/abs/2601.13974  
 - **WACV 2026 Workshop:** to appear
 
-### arXiv preprint
 ```bibtex
 @article{Lin2026STEC,
   title={STEC: A Reference-Free Spatio-Temporal Entropy Coverage Metric for Evaluating Sampled Video Frames},
@@ -132,7 +131,7 @@ The paper is available as an arXiv preprint and will appear at the WACV 2026 Wor
   journal={arXiv preprint arXiv:2601.13974},
   year={2026}
 }
-
+```
 ---
 
 ## License
