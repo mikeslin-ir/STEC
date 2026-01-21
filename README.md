@@ -130,5 +130,5 @@ If you use this code, please cite the STEC paper.
 ---
 
 ## License
-
-MIT (see repository).
+This project is released under the Apache License 2.0.
+See the `LICENSE` file for full license text.
