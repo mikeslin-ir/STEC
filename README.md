@@ -14,7 +14,7 @@ This repository contains:
 
 ---
 
-## Quick start (reviewer-friendly)
+## Quick start
 
 ### 1) Install
 
